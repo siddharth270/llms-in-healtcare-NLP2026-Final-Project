@@ -1,0 +1,12 @@
+pandas
+numpy
+torch
+transformers
+peft
+datasets
+scipy
+scikit-learn
+statsmodels
+spacy
+scispacy
+textstat

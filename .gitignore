@@ -1,0 +1,9 @@
+data/raw/
+*.jsonl
+.env
+__pycache__/
+.ipynb_checkpoints/
+results/cache/
+*.pt
+*.safetensors
+wandb/
