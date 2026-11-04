@@ -1,0 +1,22 @@
+{
+  "consensus.jsonl": {
+    "bytes": 36921504,
+    "remote": "consensus_2025-05-09-20-00-46.jsonl",
+    "sha256": "fabe37553327238928b05357d8b309737b5d426d6dee432a3376da618d0969d6"
+  },
+  "eval.jsonl": {
+    "bytes": 60258154,
+    "remote": "2025-05-07-06-14-12_oss_eval.jsonl",
+    "sha256": "e99dd3c6372c10d6fcc5e385c5fae69d0dd40392dae56836ef9493ae324ecd2f"
+  },
+  "hard.jsonl": {
+    "bytes": 12581564,
+    "remote": "hard_2025-05-08-21-00-10.jsonl",
+    "sha256": "b0320430e5cd974e746585594c1dd10b5a3fc2aff9c72b26106c2c4a069d74e9"
+  },
+  "meta_eval.jsonl": {
+    "bytes": 136224466,
+    "remote": "2025-05-07-06-14-12_oss_meta_eval.jsonl",
+    "sha256": "6a343ed3fcb6f28353c2c6c157ae30ddf2db874c947b27ba474ad54da9c5dbac"
+  }
+}
