@@ -7,7 +7,6 @@ rather than an error. Row counts are checked against the split file, so a stale
 parquet or splits built from a different seed fail loudly here.
 
     train, val, test = load_split("standard")
-    train, val, test = load_split("heldout_theme", fold="hedging")
 """
 
 from __future__ import annotations
@@ -20,11 +19,6 @@ import pandas as pd
 DATA_DIR = Path(__file__).resolve().parent
 PARQUET = DATA_DIR / "processed" / "meta_eval.parquet"
 SPLIT_DIR = DATA_DIR / "splits"
-
-THEMES = (
-    "communication", "complex_responses", "context_seeking",
-    "emergency_referrals", "global_health", "health_data_tasks", "hedging",
-)
 
 
 def load_dataset(path: Path = PARQUET) -> pd.DataFrame:
@@ -39,7 +33,6 @@ def load_dataset(path: Path = PARQUET) -> pd.DataFrame:
 
 def load_split(
     name: str = "standard",
-    fold: str | None = None,
     path: Path = PARQUET,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """(train, val, test) for a split definition, verified against its counts."""
@@ -49,12 +42,6 @@ def load_split(
     spec = json.loads(spec_path.read_text())
 
     splits, counts = spec["splits"], spec["counts"]
-    if fold is not None:
-        if fold not in splits:
-            raise KeyError(f"fold {fold!r} not in {name}; options: {sorted(splits)}")
-        splits, counts = splits[fold], counts[fold]
-    elif "train" not in splits:
-        raise ValueError(f"{name} is a multi-fold split; pass fold=, one of {sorted(splits)}")
 
     df = load_dataset(path)
     out = []
@@ -73,9 +60,3 @@ def load_split(
     train, val, test = out
     assert not (set(train.prompt_id) & set(test.prompt_id)), "train/test leakage"
     return train, val, test
-
-
-def load_heldout_folds(path: Path = PARQUET):
-    """Yield (theme, train, val, test) for each leave-one-theme-out fold."""
-    for theme in THEMES:
-        yield (theme, *load_split("heldout_theme", fold=theme, path=path))
