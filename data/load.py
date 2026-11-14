@@ -72,9 +72,6 @@ def load_split(
 
     train, val, test = out
     assert not (set(train.prompt_id) & set(test.prompt_id)), "train/test leakage"
-    print(train)
-    print(test)
-    print(val)
     return train, val, test
 
 
@@ -82,5 +79,3 @@ def load_heldout_folds(path: Path = PARQUET):
     """Yield (theme, train, val, test) for each leave-one-theme-out fold."""
     for theme in THEMES:
         yield (theme, *load_split("heldout_theme", fold=theme, path=path))
-
-load_split()
