@@ -6,9 +6,9 @@ conversation yields ~8 rows (4 responses x ~2 criteria) and responses to the
 same prompt are often near-identical, so a row-level split would put
 paraphrases of training items into the test set.
 
-Writes committed ID lists to data/splits/. Do not regenerate these once anyone
-has started training -- re-rolling silently invalidates every comparison made
-before the change.
+Writes a committed ID list to data/splits/standard.json. Do not regenerate it
+once anyone has started training -- re-rolling silently invalidates every
+comparison made before the change.
 """
 
 from __future__ import annotations
@@ -91,17 +91,6 @@ def build_standard(convs: dict, seed: int) -> dict:
     return {"train": sorted(train), "val": sorted(val), "test": sorted(test)}
 
 
-def build_heldout_theme(convs: dict, seed: int) -> dict:
-    """Leave-one-theme-out: 7 folds, each holding out one theme as test."""
-    folds = {}
-    for theme in sorted({c["theme"] for c in convs.values()}):
-        test = sorted(p for p, c in convs.items() if c["theme"] == theme)
-        rest = sorted(p for p, c in convs.items() if c["theme"] != theme)
-        train, val = stratified_split(rest, convs, VAL_FRAC, seed)
-        folds[theme] = {"train": sorted(train), "val": sorted(val), "test": test}
-    return folds
-
-
 def stats(pids, convs) -> dict:
     rows = sum(convs[p]["n_rows"] for p in pids)
     met = sum(convs[p]["n_met"] for p in pids)
@@ -153,25 +142,6 @@ def verify_standard(s: dict, convs: dict) -> None:
     assert sum(stats(v, convs)["rows"] for v in s.values()) == total, "row count"
 
 
-def verify_heldout(folds: dict, convs: dict, crit_by_pid: dict) -> None:
-    for theme, s in folds.items():
-        tr, te = set(s["train"]), set(s["test"])
-        assert not (tr & te), f"{theme}: prompt_id overlap"
-        assert not (set(s["val"]) & te), f"{theme}: val/test overlap"
-        tr_c = set().union(*(crit_by_pid[p] for p in tr))
-        te_c = set().union(*(crit_by_pid[p] for p in te))
-        assert not (tr_c & te_c), f"{theme}: {len(tr_c & te_c)} criteria leak into test"
-
-
-def criteria_by_pid() -> dict[str, set]:
-    out = collections.defaultdict(set)
-    with (RAW_DIR / "meta_eval.jsonl").open() as f:
-        for line in f:
-            r = json.loads(line)
-            out[r["prompt_id"]].add(r["rubric"])
-    return out
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--seed", type=int, default=SEED)
@@ -198,19 +168,6 @@ def main() -> None:
         row = [sum(1 for x in std[k] if convs[x]["cluster_set"] == s)
                for k in ("train", "val", "test")]
         print(f"    {row[0]:>5}/{row[1]:>4}/{row[2]:>4}  {s.split('|')[0][:52]}")
-
-    crit = criteria_by_pid()
-    folds = build_heldout_theme(convs, args.seed)
-    verify_heldout(folds, convs, crit)
-    fcounts = {t: {k: stats(v, convs) for k, v in s.items()} for t, s in folds.items()}
-    print("\n=== SPLIT B: heldout_theme (7 folds) ===")
-    print(f"{'held-out theme':<22}{'train':>8}{'val':>7}{'test':>7}{'test rows':>11}{'criteria':>10}")
-    for t, s in folds.items():
-        n_crit = len(set().union(*(crit[p] for p in s["test"])))
-        print(f"{t:<22}{len(s['train']):>8,}{len(s['val']):>7,}"
-              f"{len(s['test']):>7,}{fcounts[t]['test']['rows']:>11,}{n_crit:>10}")
-    p = write("heldout_theme", folds, convs, args.seed, fcounts)
-    print(f"-> {p.relative_to(DATA_DIR.parent)}")
 
     print("\nall assertions passed")
 

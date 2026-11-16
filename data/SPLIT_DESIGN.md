@@ -6,14 +6,17 @@ dataset characterisation.
 
 ## Scope
 
-Three split definitions, all defined over **conversations** (`prompt_id`), never
+Two split definitions, both defined over **conversations** (`prompt_id`), never
 over rows:
 
 | Name | Purpose | Answers |
 |---|---|---|
 | **A — standard** | main experiments (RQ1, RQ3, RQ4) | how good is the judge? |
-| **B — heldout_theme** | generalisation | did it learn, or memorise 30 criteria? |
 | **C — clean test** | label-noise control | how much error is physician disagreement? |
+
+A leave-one-theme-out split was designed and then dropped: it tested
+generalisation to unseen criteria, which none of the five research questions
+ask about. See git history if it is ever wanted back.
 
 ## Input
 
@@ -32,8 +35,7 @@ Expect **3,671 conversations**, **17 distinct `cluster_set` values**, **7 themes
 
 ## Output
 
-`data/splits/standard.json` and `data/splits/heldout_theme.json`, committed to
-git. Schema:
+`data/splits/standard.json`, committed to git. Schema:
 
 ```json
 {
@@ -87,40 +89,6 @@ is already one conversation, so grouping is satisfied by construction.
 - **A val set exists** so that early stopping and hyperparameter choice never
   touch test. Val is the only tuning surface.
 
-## Split B — heldout_theme
-
-**Leave-one-theme-out: 7 folds.** Each fold trains on 6 themes, tests on the 7th.
-Carve a val set as 15% of the 6 training themes, stratified on `cluster_set`.
-
-| Theme | Conversations | Rows | Criteria |
-|---|---|---|---|
-| hedging | 711 | 8,526 | 6 |
-| communication | 746 | 5,922 | 4 |
-| global_health | 634 | 2,515 | 3 |
-| emergency_referrals | 453 | 3,612 | 6 |
-| context_seeking | 408 | 3,230 | 4 |
-| health_data_tasks | 395 | 3,114 | 4 |
-| complex_responses | 324 | 2,592 | 3 |
-
-### Why
-
-With only 30 criteria, a model can learn each criterion's base rate and score
-well on Split A **without reading the response**. Split A cannot detect this,
-because its test criteria are criteria it trained on. Split B can.
-
-Themes are the right unit because they partition the data cleanly on both axes:
-conversations sum to exactly 3,671 and criteria to exactly 30, with **zero
-criteria shared across themes** (verified). Holding out individual criteria
-instead would split conversations apart — a conversation with criteria `{A, B}`
-would land partly in train and partly in test.
-
-All 7 folds, not one: training takes minutes, and 7 folds give a mean and spread
-rather than one number that may be an artefact of which theme was chosen.
-
-**State precisely in the paper** that this measures transfer to an unseen task
-type, not robustness to rephrasing. The 30 criteria map ~1:1 onto the 34
-clusters, so held-out-criterion is really held-out-cluster.
-
 ## Split C — clean test
 
 **Not a separate split.** A filter on Split A's test set: rows where all
@@ -147,8 +115,6 @@ Assertions that must pass before the splits are committed:
 
 - Split A: zero `prompt_id` overlap between train / val / test
 - Split A: conversations sum to 3,671; rows sum to 29,511
-- Split B: every fold has zero `prompt_id` **and** zero `criterion` overlap
-  between train and test
 - Split C: a strict subset of Split A's test set
 
 Tables to print (eyeball these, do not just assert):
@@ -169,7 +135,7 @@ and test, stratification failed. Investigate before proceeding.
 2. **Commit the ID lists.** Never regenerate after anyone starts training —
    re-rolling silently invalidates every comparison made before the change.
 3. **One split definition for the whole project.** Soft vs hard labels (RQ3),
-   encoder vs decoder (RQ4) and all baselines use the identical splits, or those
+   encoder vs decoder (RQ4) and all baselines use the identical split, or those
    comparisons mean nothing.
 
 ## Gotchas
