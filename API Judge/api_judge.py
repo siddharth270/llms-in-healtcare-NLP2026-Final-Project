@@ -360,6 +360,71 @@ def write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, Any]]) -> 
         writer.writerows(rows)
 
 
+def write_standard_predictions(
+    path: Path,
+    frame: pd.DataFrame,
+    judgments: list[Judgment],
+) -> None:
+    required = {"completion_id", "criterion"}
+    missing = required.difference(frame.columns)
+    if missing:
+        raise ValueError(
+            f"Parquet is missing required columns: {', '.join(sorted(missing))}"
+        )
+    for column in required:
+        if not frame[column].map(lambda value: isinstance(value, str)).all():
+            raise ValueError(f"{column} values must all be strings.")
+
+    predictions = pd.DataFrame(
+        {
+            "completion_id": pd.Series(
+                [frame.iloc[result.row_id]["completion_id"] for result in judgments],
+                dtype="string",
+            ),
+            "criterion": pd.Series(
+                [frame.iloc[result.row_id]["criterion"] for result in judgments],
+                dtype="string",
+            ),
+            "p_met": pd.Series(
+                [result.p_met for result in judgments],
+                dtype="float64",
+            ),
+        },
+        columns=["completion_id", "criterion", "p_met"],
+    )
+    predictions.to_parquet(path, index=False)
+    saved_predictions = pd.read_parquet(path)
+
+    checks = (
+        ("len == 4438", len(saved_predictions) == 4438),
+        (
+            "p_met is within [0, 1]",
+            saved_predictions["p_met"].between(0.0, 1.0).all(),
+        ),
+        (
+            "no duplicate (completion_id, criterion) pairs",
+            not saved_predictions.duplicated(
+                subset=["completion_id", "criterion"]
+            ).any(),
+        ),
+        (
+            "completion_id and criterion are str dtype",
+            all(
+                pd.api.types.is_string_dtype(saved_predictions[column].dtype)
+                and saved_predictions[column].map(
+                    lambda value: isinstance(value, str)
+                ).all()
+                for column in ("completion_id", "criterion")
+            ),
+        ),
+    )
+    for label, passed in checks:
+        print(f"{'PASS' if passed else 'FAIL'}: {label}")
+    print("Note: this judge outputs only 0 or 1 for p_met.")
+    if not all(passed for _, passed in checks):
+        raise RuntimeError("Standard prediction parquet validation failed.")
+
+
 def run_judgment(
     row_id: int,
     prompt: str,
@@ -612,6 +677,23 @@ def main() -> int:
             ],
             call_logs,
         )
+        if args.part == "test" and args.limit is None:
+            write_standard_predictions(
+                results_root / "preds_api_deepseek.parquet",
+                frame,
+                judgments,
+            )
+        else:
+            reasons = []
+            if args.part != "test":
+                reasons.append(f"--part is {args.part}")
+            if args.limit is not None:
+                reasons.append("--limit was specified")
+            print(
+                "Standard prediction parquet skipped: "
+                + " and ".join(reasons)
+                + "."
+            )
 
         total_cost = sum(row["dollar_cost"] for row in call_logs)
         per_1k = total_cost * 1000 / len(judgments) if judgments else 0.0
