@@ -187,6 +187,7 @@ class HFScorer:
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
         self.torch = torch
+        self.warned_logits = False
         self.batch_size = max(1, batch_size)
         self.tok = AutoTokenizer.from_pretrained(model_id)
         self.tok.padding_side = "left"
@@ -195,7 +196,8 @@ class HFScorer:
 
         if dtype == "auto":
             if torch.cuda.is_available():
-                chosen = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+                native_bf16 = torch.cuda.get_device_capability(0)[0] >= 8
+                chosen = torch.bfloat16 if native_bf16 else torch.float16
             else:
                 chosen = torch.float32
         else:
@@ -274,6 +276,9 @@ class HFScorer:
                 out = self.model(**enc, position_ids=position_ids, use_cache=False, logits_to_keep=1)
             except TypeError:
                 out = self.model(**enc, position_ids=position_ids, use_cache=False)
+        if out.logits.shape[1] != 1 and not self.warned_logits:
+            print("Warning: the model returned logits for every position; memory use will be high.", flush=True)
+            self.warned_logits = True
         logits = out.logits[:, -1, :].float()
         pair = logits[:, [self.true_id, self.false_id]]
         p_met = torch.sigmoid(pair[:, 0] - pair[:, 1])
