@@ -57,6 +57,17 @@ def pick_device() -> torch.device:
     return torch.device("cpu")
 
 
+def amp_dtype(device: torch.device) -> torch.dtype | None:
+    """bf16 on Ampere or newer (A100/H100/L40), fp16 on V100/P100, None off CUDA.
+
+    Checks compute capability rather than torch.cuda.is_bf16_supported(), which also
+    returns True for slow emulated bf16 on a V100.
+    """
+    if device.type != "cuda":
+        return None
+    return torch.bfloat16 if torch.cuda.get_device_capability(device)[0] >= 8 else torch.float16
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -119,9 +130,10 @@ def main() -> None:
     device = pick_device()
 
 
-    # bf16 autocast only on CUDA; MPS and CPU run in fp32
-    amp = ((lambda: torch.autocast("cuda", dtype=torch.bfloat16))
-           if device.type == "cuda" else contextlib.nullcontext)
+    dtype = amp_dtype(device)
+    amp = (lambda: torch.autocast("cuda", dtype=dtype)) if dtype else contextlib.nullcontext
+    # fp16 needs loss scaling or small gradients round to zero; bf16 and fp32 do not
+    scaler = torch.amp.GradScaler("cuda", enabled=dtype == torch.float16)
 
     out = args.out or ROOT / "checkpoints" / "encoder" / f"{args.variant}_{args.target}_s{args.seed}"
     out.mkdir(parents=True, exist_ok=True)
@@ -164,12 +176,14 @@ def main() -> None:
             # weight 1 on met, neg_weight on not-met; a 0.5 soft label lands halfway
             weight = 1 + (args.neg_weight - 1) * (1 - target)
             loss = binary_cross_entropy_with_logits(logits.float(), target, weight=weight)
-            (loss / args.grad_accum).backward()
+            scaler.scale(loss / args.grad_accum).backward()
             running += loss.item()
 
             if k % args.grad_accum == 0 or k == n_batches:
+                scaler.unscale_(opt)                 # so clipping sees the real gradient size
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-                opt.step()
+                scaler.step(opt)
+                scaler.update()
                 sched.step()
                 opt.zero_grad(set_to_none=True)
                 step += 1
@@ -190,6 +204,8 @@ def main() -> None:
     run = {
         "args": {k: str(v) if isinstance(v, Path) else v for k, v in vars(args).items()},
         "device": device.type,
+        "gpu": torch.cuda.get_device_name(device) if device.type == "cuda" else None,
+        "precision": str(dtype).removeprefix("torch.") if dtype else "fp32",
         "best": best,
         "history": history,
         "train_seconds": round(time.time() - t0, 1),     # includes the per-epoch val passes
