@@ -9,3 +9,4 @@ results/cache/
 *.safetensors
 wandb/
 .DS_Store
+.venv/

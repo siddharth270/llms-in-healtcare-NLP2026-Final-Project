@@ -1,5 +1,5 @@
 pandas
-numpy
+numpy<2
 torch
 transformers
 peft
@@ -7,6 +7,7 @@ datasets
 scipy
 scikit-learn
 statsmodels
-spacy
-scispacy
+scispacy>=0.6
 textstat
+pyarrow<20
+matplotlib
