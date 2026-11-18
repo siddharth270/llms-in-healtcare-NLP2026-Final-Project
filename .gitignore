@@ -10,3 +10,5 @@ results/cache/
 wandb/
 .DS_Store
 .venv/
+checkpoints/
+logs/
